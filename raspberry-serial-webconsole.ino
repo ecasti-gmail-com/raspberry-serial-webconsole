@@ -4,12 +4,12 @@
 #define ESP32_WIFI_TX_POWER WIFI_POWER_5dBm  // not required to have more power, remove if you need more
 /* ------------------------------------------------- */
 
-
 #define SERIAL_SPEED 115200
 #define WIFI_SSID "<YOUR-SSID>"
 #define WIFI_PASSWORD "<YOUR-WIFI-PASSWORD>"
 #define BUFFERSIZE 10000
 /* ------------------------------------------------- */
+
 int buff;
 ESPTelnetStream telnet;
 WebServer server(80);
@@ -19,10 +19,10 @@ TaskHandle_t Task1;
 TaskHandle_t Task2;
 
 /* ------------------------------------------------- */
-// Set here your Static IP address in the range of your local network
-IPAddress local_IP(192, 168, 1, 5);
+// Set your Static IP address
+IPAddress local_IP(192, 168, 2, 6);
 // Set your Gateway IP address
-IPAddress gateway(192, 168, 1, 1);
+IPAddress gateway(192, 168, 2, 1);
 
 IPAddress subnet(255, 255, 255, 0);
 IPAddress primaryDNS(8, 8, 8, 8);    //optional
@@ -30,6 +30,7 @@ IPAddress secondaryDNS(8, 8, 4, 4);  //optional
 
 uint8_t serbuffer[BUFFERSIZE];
 int buff_cur = 0;
+int buff_read = 0;
 bool overflow = false;
 
 
@@ -65,7 +66,7 @@ void errorMsg(String error, bool restart = true) {
     delay(2000);
   }
 }
-/* ------------------------------------------------------------- */
+/* ------------------------------------------------- */
 
 bool connectToWiFi(const char* ssid, const char* password, int max_tries = 20, int pause = 500) {
   int i = 0;
@@ -85,7 +86,7 @@ bool connectToWiFi(const char* ssid, const char* password, int max_tries = 20, i
   WiFi.persistent(true);
   return isConnected();
 }
-/* --------------- WEB SERVER ---------------------------------- */
+/* ------------------------------------------------- */
 void setup_server() {
   server.on("/", HTTP_GET, handleRoot);
   server.onNotFound(handleNotFound);
@@ -196,7 +197,7 @@ void setupTelnet() {
   }
 }
 
-/* ------------------ TASKS ------------------------------ */
+/* ------------------------------------------------- */
 
 void send_Serial(void* arg) {
   const TickType_t xDelay = 25 / portTICK_PERIOD_MS;
@@ -205,17 +206,17 @@ void send_Serial(void* arg) {
 
       while (Serial1.available()) {
         buff = Serial1.read();
-        if (telnet.isConnected()) {
+        // if (telnet.isConnected()) {
 
-          telnet.write(buff);
-        } else {
-          serbuffer[buff_cur++] = buff;
-          Serial.write(buff);
-          if (buff_cur > BUFFERSIZE - 1) {
-            buff_cur = 0;
-            overflow = true;
-          }
+        //    telnet.write(buff);
+        //  } else {
+        serbuffer[buff_cur++] = buff;
+        Serial.write(buff);
+        if (buff_cur > BUFFERSIZE - 1) {
+          buff_cur = 0;
+          overflow = true;
         }
+        //}
       }
     }
 
@@ -236,8 +237,6 @@ void send_Telnet(void* arg) {
     }
   }
 }
-
-/* ------------------------------------------------ */
 
 void setup() {
   Serial.begin(SERIAL_SPEED);
@@ -272,12 +271,37 @@ void setup() {
 }
 
 /* ------------------------------------------------- */
+void handle_buffer() {
+   if (telnet.isConnected()) {
+    while (buff_read < buff_cur) {
+      telnet.write(serbuffer[buff_read++]);
+    }
+    if (buff_read > buff_cur) {
+      while (buff_read < BUFFERSIZE) {
+        telnet.write(serbuffer[buff_read++]);
+      }
+      if (buff_read == BUFFERSIZE) {
+        buff_read = 0;
+      }
+    }
+
+
+   }
+}
+
+
+
+
+/* ------------------------------------------------- */
+
 
 void loop() {
 
   telnet.loop();
   server.handleClient();
-  delayMicroseconds(10);
+  handle_buffer();
+  delayMicroseconds(5);
 }
 
 /* ------------------------------------------------- */
+
